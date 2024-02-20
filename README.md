@@ -16,7 +16,7 @@ docker-compose up --build
 ``` 
 
 ## Problem Statement
-At Mindtickle, a client has requested a custom report that lists all active users on the platform and the number of daily lessons they have completed in the last 30 days. Your task is to create a Python script to generate this report and save it in an AWS S3 Bucket.
+At Mindtickle, a client has requested a custom report that lists all active users on the platform and the number of daily lessons they have completed in the last 1 year. Your task is to create a Python script to generate this report and save it in an AWS S3 Bucket.
 
 The data for this report is spread across two different databases: PostgreSQL and MySQL. You are not required to create the database, but you have access to the docker-compose file which will create the sample databases for you.
 
