@@ -1,4 +1,4 @@
-# SSA - Carlos (12th Mar 2024)
+# SSA - Ian (12th Mar 2024)
 
 ### Setup Docker
 https://docs.docker.com/desktop/ </br>
