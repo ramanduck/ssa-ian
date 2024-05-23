@@ -14,6 +14,8 @@ Criteria:
 - Follow all the best practices you would follow for a production grade code.
 
 
+#Solution
+
 ## The application can be deployed locally as well as on AWS.
 
 ## 1. Local Deployment
