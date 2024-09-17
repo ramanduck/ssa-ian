@@ -1,0 +1,79 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: An AWS Serverless Application Model template describing your function.
+
+Parameters:
+  StackName:
+    Type: String
+    Description: The name of the stack to prefix to resources
+  LambdaLayerVersionArn:
+    Type: String
+    Description: ARN of the Lambda layer
+
+Resources:
+
+  ReportBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "${StackName}-mindtickle-daily-reports"
+
+  GenerateReportLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "${StackName}-Generate-Report"
+      CodeUri: src/scripts/
+      Description: ''
+      MemorySize: 512
+      Timeout: 900
+      Handler: main.lambda_handler
+      Runtime: python3.9
+      Architectures:
+        - x86_64
+      EphemeralStorage:
+        Size: 512
+      Environment:
+        Variables:
+          S3_BUCKET_NAME: !Ref ReportBucket
+          AWS_ACCOUNT_ID: !Sub "${AWS::AccountId}"
+          POSTGRES_DB: "mt-pg"
+          POSTGRES_USER: "user"
+          POSTGRES_PASSWORD: "password"
+          POSTGRES_HOST: "mt-postgres"
+          POSTGRES_PORT: "5432"
+          MYSQL_ROOT_PASSWORD: "password"
+          MYSQL_user: "root"
+          MYSQL_DATABASE: "mt-mysql"
+          MYSQL_HOST: "mt-mysql"
+          MYSQL_PORT: "3306"
+      EventInvokeConfig:
+        MaximumEventAgeInSeconds: 21600
+        MaximumRetryAttempts: 2
+      Layers:
+        - !Ref LambdaLayerVersionArn
+      PackageType: Zip
+      Policies:
+        - PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                Resource: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:*"
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource:
+                  - !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${FunctionName}:*'
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                  - s3:DeleteObject
+                Resource: !Sub '${ReportBucket.Arn}/*'
+      SnapStart:
+        ApplyOn: None
+      RuntimeManagementConfig:
+        UpdateRuntimeOn: Auto
+
+Outputs:

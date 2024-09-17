@@ -1,0 +1,76 @@
+name: Deploy AWS Lambda and Layer
+
+on:
+  push:
+    branches:
+      - main
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      StackName: aischolarstack
+      AWS_REGION: us-east-1
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v2
+        with:
+          python-version: '3.11'
+      - name: Install and Configure Poetry
+        run: |
+          pip install poetry
+          poetry config virtualenvs.create false
+      - name: Install dependencies and package into zip
+        run: |
+          poetry install
+          poetry export -f requirements.txt --output requirements.txt --without-hashes
+          mkdir python
+          pip install -r requirements.txt -t python
+          zip -r dependencies.zip python
+      - name: Install dependencies
+        run: |
+          pip install awscli
+          pip install aws-sam-cli
+      - name: Fetch AWS Account ID
+        id: fetch_account_id
+        run: |
+          ACCOUNT_ID=$(aws sts get-caller-identity --query "Account" --output text)
+          echo "ACCOUNT_ID=$ACCOUNT_ID" >> $GITHUB_ENV
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      - name: Set Dynamic Environment Variables
+        run: |
+          echo "LAMBDA_LAYERS_BUCKET=${StackName}-lambda-layer" >> $GITHUB_ENV
+          echo "SAM_DEPLOYMENT_BUCKET=${StackName}-sam-deployment" >> $GITHUB_ENV
+        env:
+          StackName: ${{ env.StackName }}
+      - name: Upload Lambda Layer ZIP to S3
+        run: |
+          aws s3 ls "s3://${{ env.LAMBDA_LAYERS_BUCKET }}" || aws s3 mb "s3://${{ env.LAMBDA_LAYERS_BUCKET }}"
+          aws s3 ls "s3://${{ env.SAM_DEPLOYMENT_BUCKET }}" || aws s3 mb "s3://${{ env.SAM_DEPLOYMENT_BUCKET }}"
+          aws s3 cp dependencies.zip s3://${{ env.LAMBDA_LAYERS_BUCKET }}/dependencies.zip
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      - name: Publish Lambda Layer from S3
+        run: |
+          LAMBDA_LAYER_VERSION_ARN=$(aws lambda publish-layer-version --layer-name lambda_layer --description "Lambda Layer" --content S3Bucket=${{ env.LAMBDA_LAYERS_BUCKET }},S3Key=dependencies.zip --compatible-runtimes python3.9 --region ${{ env.AWS_REGION }} --query LayerVersionArn --output text)
+          echo "LAMBDA_LAYER_VERSION_ARN=$LAMBDA_LAYER_VERSION_ARN" >> $GITHUB_ENV
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      - name: Build SAM application
+        run: sam build --template-file sam.yaml --base-dir . --use-container
+      - name: Package SAM application
+        run: sam package --output-template-file packaged.yaml --s3-bucket ${{ env.SAM_DEPLOYMENT_BUCKET }} --region ${{ env.AWS_REGION }}
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      - name: Deploy SAM application
+        run: |
+          sam deploy --template-file packaged.yaml --stack-name ${{ env.StackName }} --capabilities CAPABILITY_IAM CAPABILITY_AUTO_EXPAND --region ${{ env.AWS_REGION }} --parameter-overrides StackName=${{ env.StackName }} LambdaLayerVersionArn=${{ env.LAMBDA_LAYER_VERSION_ARN }}
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
